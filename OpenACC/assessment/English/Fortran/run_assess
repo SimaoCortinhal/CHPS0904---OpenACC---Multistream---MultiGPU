@@ -1,0 +1,63 @@
+#!/bin/bash
+
+# This script compiles and runs the serial version that was given to the user with the modified version from the user. It runs each 5 times and compares the execution for the pair_gpu function. If they user achieved more than 150 times, then they passed.
+
+# please hide these files: rdf_serial.f90 , rdf_collapse.f90 , entropy_f
+
+######## serial version
+serial=serial.txt
+# Check the file is exists or not
+if [ -f $serial ]; then
+   rm $serial
+fi
+
+sleep 1 
+
+# compile 
+nvfortran -acc -ta=tesla  -Minfo=accel -o rdf nvtx.f90 rdf_serial.f90 -L/opt/nvidia/hpc_sdk/Linux_x86_64/21.3/cuda/11.2/lib64 -lnvToolsExt
+
+# run for 5 times and do an avg
+for i in {1..5}; do ./rdf >> out ; done
+serial_pair_gpu_time=$(awk '{v+=$1} END{print v/5}' $serial)
+echo .
+
+######## user's version
+result=result.txt
+# Check the file is exists or not
+if [ -f $result ]; then
+   rm $result
+fi
+
+# compile 
+nvfortran -acc -ta=tesla  -Minfo=accel -o rdf nvtx.f90 rdf.f90 -L/opt/nvidia/hpc_sdk/Linux_x86_64/21.3/cuda/11.2/lib64 -lnvToolsExt
+
+# run for 5 times and do an avg
+for i in {1..5}; do ./rdf >> out ; done
+pair_gpu_time=$(awk '{v+=$1} END{print v/5}' $result)
+echo .
+
+# compare the output
+file1="entropy_f" 
+file2="Pair_entropy.dat"
+
+if cmp -s "$file1" "$file2"; then
+    printf ' '
+else
+    printf 'You broke the code, please validate your output'
+    exit 1
+fi
+
+######## compare the total pair_gpu function (serial vs user's version)
+
+compared_value=$(echo 'scale=0;' "$serial_pair_gpu_time / $pair_gpu_time" | bc -l)
+
+if [ $(bc <<< "$compared_value > 30") -eq 1 ] 
+then
+    echo "Great. You improved the RDF code by $compared_value and passed the assessment."
+    echo "Please see instructions below for how to get credit for your work."
+    touch /dli/assessment_results/PASSED
+else
+    echo "Unfortunately, you did not achieve enough speedup. Please try again."
+fi
+
+rm out *.txt rdf

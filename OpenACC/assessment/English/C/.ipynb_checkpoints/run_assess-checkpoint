@@ -1,0 +1,59 @@
+#!/bin/bash
+
+######## serial version
+serial=serial.txt
+# Check the file is exists or not
+if [ -f $serial ]; then
+   rm $serial
+fi
+
+sleep 1 
+
+# compile 
+nvc++ -acc -Minfo=accel -o rdf rdf_serial.cpp -L/opt/softwares/cuda/cuda-12.6/lib64 -lnvToolsExt
+
+# run for 5 times and do an avg
+for i in {1..5}; do ./rdf >> out ; done
+serial_pair_gpu_time=$(awk '{v+=$1} END{print v/5}' $serial)
+echo .
+
+######## user's version
+result=result.txt
+# Check the file is exists or not
+if [ -f $result ]; then
+   rm $result
+fi
+
+# compile 
+nvc++ -acc -Minfo=accel -o rdf rdf.cpp -L/opt/softwares/cuda/cuda-12.6/lib64 -lnvToolsExt
+
+# run for 5 times and do an avg
+for i in {1..5}; do ./rdf >> out ; done
+pair_gpu_time=$(awk '{v+=$1} END{print v/5}' $result)
+echo .
+
+# compare the output
+file1="entropy" 
+file2="Pair_entropy.dat"
+
+if cmp -s "$file1" "$file2"; then
+    printf ' '
+else
+    printf 'You broke the code, please validate your output'
+    exit 1
+fi
+
+######## compare the total pair_gpu function (serial vs user's version)
+
+compared_value=$(echo 'scale=0;' "$serial_pair_gpu_time / $pair_gpu_time" | bc -l)
+
+if [ $(bc <<< "$compared_value > 15") -eq 1 ] 
+then
+    echo "Great. You improved the RDF code by $compared_value, and passed the assessment."
+    echo "Please see below for how to get credit for your work."
+    touch /dli/assessment_results/PASSED
+else
+    echo "Unfortunately,  you did not achieve enough speedup. Please try again."
+fi
+
+rm out *.txt rdf
